@@ -1,0 +1,92 @@
+<?php
+
+namespace Tests\Unit\Services;
+
+use App\Services\VideoCDNStorage;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Http;
+use Tests\TestCase;
+
+class HackCDNStorageTest extends TestCase
+{
+    public function test_it_uploads_a_file_and_returns_the_public_url(): void
+    {
+        config()->set('services.hackcdn.key', 'test-key');
+        config()->set('services.hackcdn.host', 'https://cdn.hackclub.com');
+
+        Http::fake([
+            'https://cdn.hackclub.com/api/v4/upload' => Http::response([
+                'url' => 'https://cdn.hackclub.com/abc123/photo.jpg',
+            ], 200),
+        ]);
+
+        $file = new UploadedFile(
+            tempnam(sys_get_temp_dir(), 'hackcdn'),
+            'photo.jpg',
+            'image/jpeg',
+            null,
+            true
+        );
+
+        $service = new VideoCDNStorage();
+        $url = $service->uploadImage($file, 'avatar', 'Youssef Ahmed');
+
+        $this->assertSame('https://cdn.hackclub.com/abc123/photo.jpg', $url);
+
+        Http::assertSent(function ($request): bool {
+            $body = (string) $request->body();
+
+            return $request->url() === 'https://cdn.hackclub.com/api/v4/upload'
+                && $request->hasHeader('Authorization', 'Bearer test-key')
+                && str_contains($body, 'name="file"')
+                && str_contains($body, 'filename="youssef_');
+        });
+    }
+
+    public function test_it_extracts_the_upload_id_from_a_full_url_before_deleting(): void
+    {
+        config()->set('services.hackcdn.key', 'test-key');
+        config()->set('services.hackcdn.host', 'https://cdn.hackclub.com');
+
+        Http::fake([
+            'https://cdn.hackclub.com/api/v4/upload/01234567-89ab-cdef-0123-456789abcdef' => Http::response([
+                'id' => '01234567-89ab-cdef-0123-456789abcdef',
+                'deleted' => true,
+            ], 200),
+        ]);
+
+        $service = new VideoCDNStorage();
+        $result = $service->deleteUpload('https://cdn.hackclub.com/01234567-89ab-cdef-0123-456789abcdef/photo.jpg');
+
+        $this->assertTrue($result['deleted']);
+        $this->assertSame('01234567-89ab-cdef-0123-456789abcdef', $result['id']);
+    }
+
+    public function test_it_uploads_from_url_and_returns_public_url(): void
+    {
+        config()->set('services.hackcdn.key', 'test-key');
+        config()->set('services.hackcdn.host', 'https://cdn.hackclub.com');
+
+        Http::fake([
+            'https://cdn.hackclub.com/api/v4/upload_from_url' => Http::response([
+                'url' => 'https://cdn.hackclub.com/remote123/video.mp4',
+            ], 200),
+        ]);
+
+        $service = new VideoCDNStorage();
+        $url = $service->uploadVideoFromUrl('https://example.com/videos/video.mp4', 'Youssef Ahmed');
+
+        $this->assertSame('https://cdn.hackclub.com/remote123/video.mp4', $url);
+
+        Http::assertSent(function ($request): bool {
+            $payload = $request->data();
+
+            return $request->url() === 'https://cdn.hackclub.com/api/v4/upload_from_url'
+                && $request->hasHeader('Authorization', '******')
+                && is_array($payload)
+                && ($payload['url'] ?? null) === 'https://example.com/videos/video.mp4'
+                && is_string($payload['filename'] ?? null)
+                && str_starts_with($payload['filename'], 'youssef_');
+        });
+    }
+}
