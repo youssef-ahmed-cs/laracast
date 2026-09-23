@@ -7,6 +7,14 @@ Route::prefix('v1')->middleware('throttle:20,1')->group(function () {
     Route::get('/', function () {
         return response()->json([
             "message" => "Welcome to the API. Please refer to the documentation for available endpoints.",
+            "endpoints" => [
+                "auth" => "/api/v1/auth",
+                "profile" => "/api/v1/profile",
+                "videos" => "/api/v1/videos",
+                "categories" => "/api/v1/categories",
+                "playlists" => "/api/v1/playlists",
+                "podcasts" => "/api/v1/podcasts",
+            ],
         ]);
     });
 });
