@@ -21,7 +21,7 @@ jobs:
           script: |
             set -e
 
-            cd /var/www/html/paltform-api
+            cd /var/www/html/laracast
 
             git fetch origin
             git reset --hard origin/main
