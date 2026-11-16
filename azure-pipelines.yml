@@ -1,0 +1,117 @@
+trigger:
+  branches:
+    include:
+      - main
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  sshServiceConnection: 'Linode'
+  deployPath: '/var/www/html/laravel-app'
+
+stages:
+
+  - stage: Build
+    displayName: 'Build Stage'
+
+    jobs:
+      - job: BuildJob
+        displayName: 'Build Laravel Application'
+
+        steps:
+          - checkout: self
+
+          - task: UsePHPVersion@0
+            inputs:
+              versionSpec: '8.4'
+            displayName: 'Setup PHP 8.4'
+
+          - script: |
+              php --version
+              composer --version
+            displayName: 'Check PHP Environment'
+
+          - script: |
+              composer validate
+              composer install \
+                --no-interaction \
+                --prefer-dist \
+                --no-progress
+            displayName: 'Install Composer Dependencies'
+
+          - script: |
+              php artisan --version
+            displayName: 'Validate Laravel Application'
+
+
+  - stage: Deploy
+    displayName: 'Deploy to VPS'
+    dependsOn: Build
+    condition: succeeded()
+
+    jobs:
+      - deployment: DeploymentJob
+        displayName: 'Deploy Laravel Application'
+
+        environment: 'Linode-Production'
+
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+
+                - task: SSH@0
+                  displayName: 'Deploy Laravel Application'
+                  inputs:
+                    sshEndpoint: '$(sshServiceConnection)'
+                    runOptions: 'inline'
+                    failOnStdErr: false
+
+                    inline: |
+                      set -e
+
+                      cd $(deployPath)
+
+                      echo "Starting Laravel deployment..."
+
+                      echo "Fetching latest code..."
+                      git fetch --prune origin
+
+                      BRANCH="$(Build.SourceBranchName)"
+
+                      echo "Deploying branch: $BRANCH"
+
+                      git reset --hard "origin/$BRANCH"
+
+                      echo "Installing production dependencies..."
+
+                      composer install \
+                        --no-interaction \
+                        --prefer-dist \
+                        --no-dev \
+                        --optimize-autoloader
+
+                      echo "Creating storage symlink..."
+                      php artisan storage:link
+
+                      echo "Running database migrations..."
+                      php artisan migrate --force
+
+                      echo "Clearing old caches..."
+                      php artisan optimize:clear
+
+                      echo "Optimizing Laravel..."
+                      php artisan config:cache
+                      php artisan route:cache
+                      php artisan view:cache
+
+                      echo "Fixing storage permissions..."
+                      chown -R www-data:www-data storage bootstrap/cache
+
+                      chmod -R 775 storage bootstrap/cache
+
+                      echo "Reloading PHP-FPM..."
+                      sudo systemctl reload php8.4-fpm
+
+                      echo "Laravel deployment completed successfully!"
