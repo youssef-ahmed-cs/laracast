@@ -1,12 +1,8 @@
-### GET request to example server
-POST {{base_url}}/api/v1/register HTTP/1.1
+### GET request to show info
+GET https://devhubblobs.blob.core.windows.net/home/index.json
 Accept: application/json
 
-{
-  "name": "John Doe",
-  "email": "john.doe@example.com",
-  "password": "secret123",
-   "password_confirmation": "secret123"
-}
 
-###
+### POST request to create new note
+GET https://ai.hackclub.com/proxy/v1/models
+Accept: application/json
